@@ -1,10 +1,18 @@
-import string
-
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 
+import string
 import requests
 import matplotlib.pyplot as plt
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 def get_text(url):
@@ -13,7 +21,7 @@ def get_text(url):
         response.raise_for_status()  # Перевірка на помилки HTTP
         return response.text
     except requests.RequestException as e:
-        print(f"Download error: {e}")
+        logger.error(f"Download error: {e}")
         return None
 
 
@@ -26,9 +34,9 @@ def map_function(word):
     return word, 1
 
 
-def shuffle_function(mapped_values):
+def shuffle_function(mapped):
     shuffled = defaultdict(list)
-    for key, value in mapped_values:
+    for key, value in mapped:
         shuffled[key].append(value)
     return shuffled
 
@@ -46,16 +54,16 @@ def map_reduce(text, num_workers=8):
 
     # 1. MAP: Паралельний Мапінг
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        mapped_values = list(executor.map(map_function, words))
+        mapped = list(executor.map(map_function, words))
 
     # 2. SHUFFLE
-    shuffled = shuffle_function(mapped_values)
+    shuffled = shuffle_function(mapped)
 
     # 3. REDUCE: Паралельна Редукція
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        reduced_values = list(executor.map(reduce_function, shuffled.items()))
+        reduced = list(executor.map(reduce_function, shuffled.items()))
 
-    return dict(reduced_values)
+    return dict(reduced)
 
 
 # Фільтр: тільки слова з 6+ букв
@@ -63,6 +71,7 @@ def filter_functional_words(word_counts, min_length=6):
     return {word: cnt for word, cnt in word_counts.items() if len(word) >= min_length}
 
 
+# Видобування топ-N слів (Top 10 most frequent words)
 def top_words(word_counts, top_n=10):
     avoided = filter_functional_words(word_counts)
     return sorted(avoided.items(), key=lambda x: x[1], reverse=True)[:top_n]
@@ -85,23 +94,24 @@ def visualize_top_words(top_words, title="10 Most Frequent words"):
 if __name__ == "__main__":
     # Вхідний текст для обробки
     url = "https://gutenberg.net.au/ebooks06/0604171.txt"
-    print("Завантаження тексту …")
+
+    logger.info("Завантаження тексту …")
     text = get_text(url)
     if not text:
         raise SystemExit("Помилка: Не вдалося отримати вхідний текст.")
 
-    print("Очищення знаків пунктуації …")
+    logger.info("Очищення знаків пунктуації …")
     cleaned = remove_punctuation(text)
 
-    print("Виконання Map-Reduce …")
+    logger.info("Виконання Map-Reduce …")
     counts = map_reduce(cleaned, num_workers=12)
 
-    print("Видобування топ-10 …")
+    logger.info("Видобування топ-10 …")
     top10 = top_words(counts, top_n=10)
 
-    print("\n10 Most Frequent words:")
+    logger.info("10 Most Frequent words:")
     for word, cnt in top10:
-        print(f"  {word:<15} {cnt}")
+        logger.info(f"  {word:<15} {cnt}")
 
-    print("\nПобудова графіка …")
+    logger.info("Побудова графіка …")
     visualize_top_words(top10, title="Top 10 most frequent words")
